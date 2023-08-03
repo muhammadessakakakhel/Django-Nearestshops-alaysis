@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Nearby Shops</title>
+    <!-- Include Leaflet.js library -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"
+    />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    {% comment %} import {LayersControl} from 'leaflet'; {% endcomment %}
+
+    <style>
+      /* Style for the sidebar */
+      .sidebar {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 200px;
+        background-color: #ccfdbc;
+        padding: 10px;
+        border: 1px solid #ccc;
+        z-index: 1000;
+      }
+
+      /* Style for the list of nearest shops */
+      .nearest-shops-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      /* Style for each shop item */
+      .nearest-shops-list li {
+        padding: 10px;
+        border-bottom: 1px solid #ccc;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+      }
+
+      /* Style for shop name */
+      .nearest-shops-list li strong {
+        margin-right: 10px;
+        color: #333;
+      }
+
+      /* Style for shop distance */
+      .nearest-shops-list li span {
+        color: #666;
+      }
+
+      /* Add a background color when hovering over a shop item */
+      .nearest-shops-list li:hover {
+        background-color: #f0f0f0;
+      }
+
+      #map {
+        margin-left: 230px;
+        margin-top: 4px;
+      }
+
+      /* Style for the navigation bar */
+      #navbar {
+        background-color: #ccfd7f;
+        color: white;
+        padding: 10px;
+        text-align: center;
+        margin-left: 230px;
+      }
+
+      /* Style for the navigation links */
+      #navbar a {
+        color: white;
+        text-decoration: none;
+        padding: 8px 16px;
+        display: inline-block;
+      }
+
+      /* Add some spacing between navigation links */
+      #navbar a + a {
+        margin-left: 20px;
+      }
+      #button {
+        position: fixed; /* Keep the button fixed on the viewport */
+        bottom: 10px;
+        right: 10px;
+        z-index: 1;
+        background-color: #29d420;
+        color: white;
+        padding: 10px;
+        border: none;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="navbar">
+      <b>Geodjango Geoportal</b>
+      <a href="http://127.0.0.1:8000/admin/">Home</a>
+      <a href="http://127.0.0.1:8000/admin/login/?next=/admin/signin"
+        >Register</a
+      >
+      <a href="http://127.0.0.1:8000/admin/shops/shop/add/">Add Shops</a>
+      <a href="http://127.0.0.1:8000/admin/shops/shop/">Data</a>
+
+      <!-- Add more navigation links as needed -->
+    </div>
+
+    <!-- Add the map container -->
+    <div id="map" style="height: 430px"></div>
+
+    <!-- Add the sidebar -->
+    <div class="sidebar">
+      <h3>Nearest shops list and distances</h3>
+      <ul class="nearest-shops-list" id="nearestShopsList">
+        {% if shops %} {% for shop in shops %}
+        <li>{{ shop.name }}: {{ shop.distance }}</li>
+        {% endfor %} {% else %}
+        <li>No nearby shops found.</li>
+        {% endif %}
+      </ul>
+      <!-- Add button to trigger geolocation -->
+      <button id="button" onclick="getUserLocation()">Mark My Location</button>
+    </div>
+
+    <!-- Add the JavaScript code for the map -->
+    <script>
+              <!-- Add the JavaScript code for the map and search control -->
+
+              var map = L.map('map').setView([30.3753, 69.3451], 6); // Default view (Pakistan)
+
+              var osm= L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  }).addTo(map);
+
+
+              var USGS_USImageryTopo = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
+      	        maxZoom: 20,
+      	       attribution: 'Tiles courtesy of the <a href="https://usgs.gov/">U.S. Geological Survey</a>'
+              });
+
+
+              var Esri_NatGeoWorldMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC',
+                maxZoom: 16
+            });
+
+            var Thunderforest_OpenCycleMap = L.tileLayer('https://{s}.tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey={apikey}', {
+                attribution: '&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                apikey: '<your apikey>',
+                maxZoom: 22
+            });
+
+            var Stamen_TerrainLabels = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain-labels/{z}/{x}/{y}{r}.{ext}', {
+                attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                subdomains: 'abcd',
+                minZoom: 0,
+                maxZoom: 18,
+                ext: 'png'
+            });
+
+            var baseMaps = {
+                'open street map': osm,
+                'usgs map': USGS_USImageryTopo,
+                'Esri map': Esri_NatGeoWorldMap,
+                'cycle routes': Thunderforest_OpenCycleMap,
+                 ' Terrian map ': Stamen_TerrainLabels,
+
+
+                
+
+            }
+             
+            L.control.layers(baseMaps).addTo(map); 
+
+
+
+
+                  {% comment %} L.Control.geocoder().addTo(map); {% endcomment %}
+                var geocoder = L.Control.geocoder({
+                      defaultMarkGeocode: true
+                    })
+                      .on('markgeocode', function(e) {
+                        var bbox = e.geocode.bbox;
+                        var poly = L.polygon([
+                          bbox.getSouthEast(),
+                          bbox.getNorthEast(),
+                          bbox.getNorthWest(),
+                          bbox.getSouthWest()
+                        ]).addTo(map);
+                        map.fitBounds(poly.getBounds());
+                      })
+                      .addTo(map);
+
+
+              // Function to get user's location and update nearest shops
+              function getUserLocation() {
+                  if (navigator.geolocation) {
+                      navigator.geolocation.getCurrentPosition(updateShops);
+                  } else {
+                      alert('Geolocation is not supported by this browser.');
+                  }
+              }
+
+              // Function to update nearest shops based on user's location
+              function updateShops(position) {
+                  var latitude = position.coords.latitude;
+                  var longitude = position.coords.longitude;
+                  map.setView([latitude, longitude], 13);
+
+                  // Clear existing markers
+                  map.eachLayer(function (layer) {
+                      if (layer instanceof L.Marker) {
+                          map.removeLayer(layer);
+                      }
+                  });
+
+                  // Add user marker
+                  L.marker([latitude, longitude]).addTo(map)
+                      .bindPopup('Your Location');
+
+                  // Update nearest shops
+                  {% if shops %}
+                      {% for shop in shops %}
+                          var shopName = "{{ shop.name }}";
+                          var shopLatitude = {{ shop.location.y }};
+                          var shopLongitude = {{ shop.location.x }};
+                          L.marker([shopLatitude, shopLongitude]).addTo(map)
+                              .bindPopup(shopName);
+                      {% endfor %}
+                  {% endif %}
+              }
+
+
+
+              // Call updateShops with initial coordinates (you can use the user's last known position here)
+              // For example, if you have a variable "userLatitude" and "userLongitude" in your template context.
+              // Uncomment the following line and replace "userLatitude" and "userLongitude" with the actual values.
+              // updateShops({ coords: { latitude: userLatitude, longitude: userLongitude } });
+    </script>
+  </body>
+</html>
